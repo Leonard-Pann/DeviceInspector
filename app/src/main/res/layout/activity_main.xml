@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FAFAFA">
+
+    <LinearLayout
+        android:id="@+id/topControlsLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:background="#EEEEEE">
+
+        <TextView
+            android:id="@+id/titleTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="MotionEvent / InputDevice Tester"
+            android:textStyle="bold"
+            android:textColor="#202124"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/smallStatusTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Aucun MotionEvent capturé."
+            android:textColor="#444444"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:id="@+id/buttonsLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/refreshSystemButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Refresh système" />
+
+            <Switch
+                android:id="@+id/liveUpdateSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="Live"
+                android:checked="true" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/touchCaptureView"
+        android:layout_width="match_parent"
+        android:layout_height="130dp"
+        android:gravity="center"
+        android:padding="12dp"
+        android:background="#DDDDDD"
+        android:textColor="#202124"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:text="ZONE DE TEST TACTILE\nTouchez ici pour générer des MotionEvent\nLe texte en dessous peut être scrollé sans déclencher de refresh" />
+
+    <ScrollView
+        android:id="@+id/infoScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="false"
+        android:background="#FAFAFA">
+
+        <TextView
+            android:id="@+id/eventInfoTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:textColor="#202124"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:textIsSelectable="true"
+            android:lineSpacingExtra="2dp"
+            android:text="Application prête." />
+
+    </ScrollView>
+
+</LinearLayout>
