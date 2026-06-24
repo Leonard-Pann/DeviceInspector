@@ -154,11 +154,9 @@ public class MainActivity extends Activity {
         appendLine(sb, "Méthode de capture", lastCaptureMethod);
         appendLine(sb, "SDK Android", String.valueOf(Build.VERSION.SDK_INT));
         appendLine(sb, "Appareil", safeString(Build.MANUFACTURER + " " + Build.MODEL));
-        appendLine(sb, "Bug de scroll corrigé", "oui : seuls les événements de la zone tactile mettent à jour l'affichage");
 
         if (event == null) {
             appendLine(sb, "Dernier MotionEvent", "aucun pour le moment");
-            appendLine(sb, "Action à faire", "touche la zone grise en haut de l'écran");
             setInfoText(sb.toString(), preserveScroll);
             updateSmallStatus("Aucun MotionEvent capturé pour le moment.");
             return;
