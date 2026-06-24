@@ -163,11 +163,12 @@ public class MainActivity extends Activity {
         }
 
         int deviceId = safeGetDeviceId(event);
-        InputDevice inputDevice = safeGetInputDevice(deviceId);
+        InputDevice inputDevice = event.getDevice();
 
         appendLine(sb, "MotionEvent présent", "oui");
         appendLine(sb, "deviceId depuis MotionEvent", formatIntDecHex(deviceId));
-        appendLine(sb, "InputDevice trouvé", inputDevice != null ? "oui" : "non");
+        appendLine(sb, "InputDevice trouvé avec l'id", InputDevice.getDevice(deviceId) != null ? "oui" : "non");
+        appendLine(sb, "InputDevice trouvé avec le MotionEvent", inputDevice != null ? "oui" : "non");
 
         appendSection(sb, "2. INFORMATIONS SUR L'INPUTDEVICE");
         appendAllInputDevices(sb);
