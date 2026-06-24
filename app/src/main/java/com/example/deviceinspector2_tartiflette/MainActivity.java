@@ -241,11 +241,6 @@ public class MainActivity extends Activity {
     private void appendAdbInfo(StringBuilder sb) {
         appendSubSection(sb, "ADB / débogage USB");
 
-        /*
-         * Limitation importante :
-         * Android documente Settings.Global.ADB_ENABLED, mais pour les apps tierces,
-         * la valeur retournée est toujours 0.
-         */
         try {
             int adbEnabled = Settings.Global.getInt(
                     getContentResolver(),
@@ -253,9 +248,7 @@ public class MainActivity extends Activity {
                     -1
             );
 
-            appendLine(sb, "Settings.Global.ADB_ENABLED brut", formatIntDecHex(adbEnabled));
-            appendLine(sb, "Interprétation fiable", "non pour une app tierce normale");
-            appendLine(sb, "Pourquoi", "Android retourne 0 aux applications tierces, même si ADB est activé.");
+            appendLine(sb, "Settings.Global.ADB_ENABLED brut", Integer.toString(adbEnabled));
         } catch (Exception e) {
             appendLine(sb, "Settings.Global.ADB_ENABLED", errorText(e));
         }
@@ -313,19 +306,6 @@ public class MainActivity extends Activity {
         }
 
         appendEmptyLine(sb);
-
-        appendLine(
-                sb,
-                "Débogage USB - paramètres de sécurité Xiaomi/MIUI",
-                "non accessible via API Android publique"
-        );
-        appendLine(
-                sb,
-                "Remarque MIUI",
-                "Le réglage 'Débogage USB - paramètres de sécurité' est spécifique Xiaomi et n'a pas d'API Android standard."
-        );
-
-        appendEmptyLine(sb);
     }
 
     private void appendBatteryAndUsbConnectionInfo(StringBuilder sb) {
@@ -349,17 +329,9 @@ public class MainActivity extends Activity {
             int voltage = batteryIntent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1);
             int temperature = batteryIntent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
 
-            appendLine(sb, "Battery status", formatIntDecHex(status) + " / " + batteryStatusToString(status));
-            appendLine(sb, "EXTRA_PLUGGED", formatIntDecHex(plugged) + " / " + pluggedToString(plugged));
+            appendLine(sb, "Battery status", Integer.toString(status) + " / " + batteryStatusToString(status));
+            appendLine(sb, "EXTRA_PLUGGED", Integer.toString(plugged)+ " / " + pluggedToString(plugged));
             appendLine(sb, "Téléphone en charge", String.valueOf(plugged != 0));
-            appendLine(sb, "Niveau batterie", level + " / " + scale);
-            appendLine(sb, "Tension batterie", voltage + " mV");
-
-            if (temperature >= 0) {
-                appendLine(sb, "Température batterie", String.format(Locale.US, "%.1f °C", temperature / 10.0f));
-            } else {
-                appendLine(sb, "Température batterie", "indisponible");
-            }
 
             if ((plugged & BatteryManager.BATTERY_PLUGGED_USB) == BatteryManager.BATTERY_PLUGGED_USB) {
                 appendLine(sb, "Connexion USB détectée par batterie", "oui : BATTERY_PLUGGED_USB");
@@ -394,7 +366,6 @@ public class MainActivity extends Activity {
 
             if (deviceList == null || deviceList.isEmpty()) {
                 appendLine(sb, "UsbManager.getDeviceList()", "aucun périphérique USB host détecté");
-                appendLine(sb, "Remarque", "Un PC relié au téléphone n'apparaît généralement pas ici : cette liste concerne surtout l'OTG.");
                 return;
             }
 
@@ -506,10 +477,6 @@ public class MainActivity extends Activity {
         appendEmptyLine(sb);
     }
 
-    // -------------------------------------------------------------------------
-    // SECTION INPUTDEVICE
-    // -------------------------------------------------------------------------
-
     private void appendAllInputDevices(StringBuilder sb) {
         try {
             int[] ids = InputDevice.getDeviceIds();
@@ -566,13 +533,6 @@ public class MainActivity extends Activity {
 
         appendEmptyLine(sb);
 
-        appendLine(sb, "supportsSource(SOURCE_TOUCHSCREEN)", safeSupportsSource(device, InputDevice.SOURCE_TOUCHSCREEN));
-        appendLine(sb, "supportsSource(SOURCE_MOUSE)", safeSupportsSource(device, InputDevice.SOURCE_MOUSE));
-        appendLine(sb, "supportsSource(SOURCE_STYLUS)", safeSupportsSource(device, InputDevice.SOURCE_STYLUS));
-        appendLine(sb, "supportsSource(SOURCE_TOUCHPAD)", safeSupportsSource(device, InputDevice.SOURCE_TOUCHPAD));
-
-        appendEmptyLine(sb);
-
         try {
             int keyboardType = device.getKeyboardType();
             appendLine(sb, "getKeyboardType()", formatIntDecHex(keyboardType) + " / " + keyboardTypeToString(keyboardType));
@@ -617,10 +577,6 @@ public class MainActivity extends Activity {
 
         appendEmptyLine(sb);
     }
-
-    // -------------------------------------------------------------------------
-    // SECTION MOTIONEVENT
-    // -------------------------------------------------------------------------
 
     private void appendMotionEventInfo(StringBuilder sb, MotionEvent event) {
         try {
@@ -742,6 +698,12 @@ public class MainActivity extends Activity {
                 appendLine(sb, "getToolMinor(pointerIndex)", errorText(e));
             }
 
+            try {
+                appendLine(sb, "getOrientation(pointerIndex)", formatFloat(event.getOrientation(pointerIndex)));
+            } catch (Exception e) {
+                appendLine(sb, "getOrientation(pointerIndex)", errorText(e));
+            }
+
             appendEmptyLine(sb);
         }
     }
@@ -756,7 +718,6 @@ public class MainActivity extends Activity {
 
         if (historySize <= 0) {
             appendLine(sb, "Historique", "aucune donnée historique dans ce MotionEvent");
-            appendLine(sb, "Remarque", "normal pour beaucoup d'événements, surtout ACTION_DOWN ou ACTION_UP");
             return;
         }
 
@@ -1042,16 +1003,12 @@ public class MainActivity extends Activity {
 
     private static void appendSection(StringBuilder sb, String title) {
         sb.append("\n");
-        sb.append("============================================================\n");
-        sb.append(title).append("\n");
-        sb.append("============================================================\n");
+        sb.append(title).append(":\n");
     }
 
     private static void appendSubSection(StringBuilder sb, String title) {
         sb.append("\n");
-        sb.append("------------------------------------------------------------\n");
-        sb.append(title).append("\n");
-        sb.append("------------------------------------------------------------\n");
+        sb.append(title).append(":\n");
     }
 
     private static void appendLine(StringBuilder sb, String label, String value) {
