@@ -1,6 +1,7 @@
 package com.example.deviceinspector2_tartiflette;
 
 import android.app.Activity;
+import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -22,12 +23,19 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import android.hardware.display.DisplayManager;
+import android.view.Display;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements SensorEventListener {
 
     private TextView eventInfoTextView;
     private TextView touchCaptureView;
@@ -35,16 +43,34 @@ public class MainActivity extends Activity {
     private ScrollView infoScrollView;
     private Switch liveUpdateSwitch;
     private Button refreshSystemButton;
-
     private long updateCounter = 0;
 
-    /*
-     * On garde une copie du dernier MotionEvent pour pouvoir rafraîchir
-     * les infos système sans perdre le dernier événement affiché.
-     *
-     * Important : un MotionEvent reçu par callback peut être recyclé par Android.
-     * Si on veut le conserver, il faut utiliser MotionEvent.obtain(event).
-     */
+    private SensorManager sensorManager;
+    private Sensor accelerometerSensor;
+    private Sensor gyroscopeSensor;
+    private Sensor magnetometerSensor;
+
+    private final float[] accelerometerValues = new float[3];
+    private final float[] gyroscopeValues = new float[3];
+    private final float[] magnetometerValues = new float[3];
+
+    private boolean hasAccelerometerValue = false;
+    private boolean hasGyroscopeValue = false;
+    private boolean hasMagnetometerValue = false;
+
+    private int accelerometerAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE;
+    private int gyroscopeAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE;
+    private int magnetometerAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE;
+
+    private long accelerometerTimestampNs = 0L;
+    private long gyroscopeTimestampNs = 0L;
+    private long magnetometerTimestampNs = 0L;
+
+    private long lastSensorUiRefreshMs = 0L;
+    private static final long SENSOR_UI_REFRESH_INTERVAL_MS = 100L; // 10 refresh UI / seconde max
+
+    private String lastSensorName = "aucun capteur";
+
     private MotionEvent lastMotionEventCopy = null;
     private String lastCaptureMethod = "aucun événement";
 
@@ -60,14 +86,51 @@ public class MainActivity extends Activity {
         liveUpdateSwitch = findViewById(R.id.liveUpdateSwitch);
         refreshSystemButton = findViewById(R.id.refreshSystemButton);
 
+        setupSensors();
         setupTouchCaptureZone();
         setupRefreshButton();
 
         renderScreen(null, "initialisation", true);
     }
 
+    // region Sensor
+
+    private void setupSensors() {
+        try {
+            sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+            if (sensorManager == null) {
+                return;
+            }
+
+            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+            magnetometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+
+        } catch (Exception e) {
+            sensorManager = null;
+            accelerometerSensor = null;
+            gyroscopeSensor = null;
+            magnetometerSensor = null;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        registerSensorListeners();
+    }
+
+    @Override
+    protected void onPause() {
+        unregisterSensorListeners();
+        super.onPause();
+    }
+
     @Override
     protected void onDestroy() {
+        unregisterSensorListeners();
+
         super.onDestroy();
 
         if (lastMotionEventCopy != null) {
@@ -76,16 +139,227 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void registerSensorListeners() {
+        if (sensorManager == null) {
+            return;
+        }
+
+        /*
+         * SENSOR_DELAY_UI est suffisant pour afficher du texte en temps réel.
+         * Si tu veux plus réactif, tu peux essayer SENSOR_DELAY_GAME.
+         */
+        int delay = SensorManager.SENSOR_DELAY_UI;
+
+        if (accelerometerSensor != null) {
+            sensorManager.registerListener(this, accelerometerSensor, delay);
+        }
+
+        if (gyroscopeSensor != null) {
+            sensorManager.registerListener(this, gyroscopeSensor, delay);
+        }
+
+        if (magnetometerSensor != null) {
+            sensorManager.registerListener(this, magnetometerSensor, delay);
+        }
+    }
+
+    private void unregisterSensorListeners() {
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event == null || event.sensor == null || event.values == null) {
+            return;
+        }
+
+        int sensorType = event.sensor.getType();
+        lastSensorName = sensorTypeToString(sensorType);
+
+        switch (sensorType) {
+            case Sensor.TYPE_ACCELEROMETER:
+                copyFirst3(event.values, accelerometerValues);
+                accelerometerAccuracy = event.accuracy;
+                accelerometerTimestampNs = event.timestamp;
+                hasAccelerometerValue = true;
+                break;
+
+            case Sensor.TYPE_GYROSCOPE:
+                copyFirst3(event.values, gyroscopeValues);
+                gyroscopeAccuracy = event.accuracy;
+                gyroscopeTimestampNs = event.timestamp;
+                hasGyroscopeValue = true;
+                break;
+
+            case Sensor.TYPE_MAGNETIC_FIELD:
+                copyFirst3(event.values, magnetometerValues);
+                magnetometerAccuracy = event.accuracy;
+                magnetometerTimestampNs = event.timestamp;
+                hasMagnetometerValue = true;
+                break;
+
+            default:
+                return;
+        }
+
+        if (liveUpdateSwitch != null && !liveUpdateSwitch.isChecked()) {
+            return;
+        }
+
+        long nowMs = System.currentTimeMillis();
+
+        if (nowMs - lastSensorUiRefreshMs < SENSOR_UI_REFRESH_INTERVAL_MS) {
+            return;
+        }
+
+        lastSensorUiRefreshMs = nowMs;
+
+        renderScreen(lastMotionEventCopy, "SensorEvent : " + lastSensorName, true);
+        updateSmallStatus("Capteurs live : " + lastSensorName + " mis à jour");
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        if (sensor == null) {
+            return;
+        }
+
+        switch (sensor.getType()) {
+            case Sensor.TYPE_ACCELEROMETER:
+                accelerometerAccuracy = accuracy;
+                break;
+
+            case Sensor.TYPE_GYROSCOPE:
+                gyroscopeAccuracy = accuracy;
+                break;
+
+            case Sensor.TYPE_MAGNETIC_FIELD:
+                magnetometerAccuracy = accuracy;
+                break;
+        }
+    }
+
+    private void appendRealtimeSensorsInfo(StringBuilder sb) {
+        appendSubSection(sb, "Capteurs temps réel : accéléromètre / gyroscope / magnétomètre");
+
+        appendEmptyLine(sb);
+
+        appendSensorBlock(
+                sb,
+                "Accéléromètre",
+                accelerometerSensor,
+                hasAccelerometerValue,
+                accelerometerValues,
+                "m/s²",
+                accelerometerAccuracy,
+                accelerometerTimestampNs
+        );
+
+        appendSensorBlock(
+                sb,
+                "Gyroscope",
+                gyroscopeSensor,
+                hasGyroscopeValue,
+                gyroscopeValues,
+                "rad/s",
+                gyroscopeAccuracy,
+                gyroscopeTimestampNs
+        );
+
+        appendSensorBlock(
+                sb,
+                "Magnétomètre",
+                magnetometerSensor,
+                hasMagnetometerValue,
+                magnetometerValues,
+                "µT",
+                magnetometerAccuracy,
+                magnetometerTimestampNs
+        );
+    }
+
+    private void appendSensorBlock(
+            StringBuilder sb,
+            String label,
+            Sensor sensor,
+            boolean hasValue,
+            float[] values,
+            String unit,
+            int accuracy,
+            long timestampNs
+    ) {
+        appendLine(sb, label + " disponible", sensor != null ? "oui" : "non");
+
+        if (sensor != null) {
+            appendLine(sb, label + " nom", safeString(sensor.getName()));
+            appendLine(sb, label + " vendor", safeString(sensor.getVendor()));
+            appendLine(sb, label + " version", String.valueOf(sensor.getVersion()));
+            appendLine(sb, label + " portée max", formatFloat(sensor.getMaximumRange()) + " " + unit);
+            appendLine(sb, label + " résolution", formatFloat(sensor.getResolution()) + " " + unit);
+            appendLine(sb, label + " consommation", formatFloat(sensor.getPower()) + " mA");
+            appendLine(sb, label + " minDelay", sensor.getMinDelay() + " µs");
+        }
+
+        if (hasValue && values != null && values.length >= 3) {
+            appendLine(sb, label + " X", formatFloat(values[0]) + " " + unit);
+            appendLine(sb, label + " Y", formatFloat(values[1]) + " " + unit);
+            appendLine(sb, label + " Z", formatFloat(values[2]) + " " + unit);
+            appendLine(sb, label + " précision", accuracyToString(accuracy) + " / " + formatIntDecHex(accuracy));
+            appendLine(sb, label + " timestamp", timestampNs + " ns");
+        } else {
+            appendLine(sb, label + " valeurs", sensor == null ? "capteur absent" : "en attente du premier événement");
+        }
+
+        appendEmptyLine(sb);
+    }
+
+    private static void copyFirst3(float[] source, float[] destination) {
+        if (source == null || destination == null || destination.length < 3) {
+            return;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            destination[i] = i < source.length ? source[i] : 0.0f;
+        }
+    }
+
+    private static String sensorTypeToString(int sensorType) {
+        switch (sensorType) {
+            case Sensor.TYPE_ACCELEROMETER:
+                return "TYPE_ACCELEROMETER";
+            case Sensor.TYPE_GYROSCOPE:
+                return "TYPE_GYROSCOPE";
+            case Sensor.TYPE_MAGNETIC_FIELD:
+                return "TYPE_MAGNETIC_FIELD";
+            default:
+                return "Type capteur inconnu : " + sensorType;
+        }
+    }
+
+    private static String accuracyToString(int accuracy) {
+        switch (accuracy) {
+            case SensorManager.SENSOR_STATUS_UNRELIABLE:
+                return "SENSOR_STATUS_UNRELIABLE";
+            case SensorManager.SENSOR_STATUS_ACCURACY_LOW:
+                return "SENSOR_STATUS_ACCURACY_LOW";
+            case SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM:
+                return "SENSOR_STATUS_ACCURACY_MEDIUM";
+            case SensorManager.SENSOR_STATUS_ACCURACY_HIGH:
+                return "SENSOR_STATUS_ACCURACY_HIGH";
+            default:
+                return "Précision inconnue";
+        }
+    }
+
+    //endregion
+
     private void setupTouchCaptureZone() {
         if (touchCaptureView == null) {
             return;
         }
 
-        /*
-         * Correction du bug de scroll :
-         * on capture uniquement les MotionEvent dans cette zone dédiée.
-         * Le ScrollView en dessous reste libre pour la lecture.
-         */
         touchCaptureView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -205,10 +479,6 @@ public class MainActivity extends Activity {
 
         eventInfoTextView.setText(text);
 
-        /*
-         * Même si le texte change, on évite de forcer un retour en haut.
-         * Cela rend l'écran plus stable pendant les rafraîchissements manuels.
-         */
         if (preserveScroll && infoScrollView != null) {
             final int finalOldScrollY = oldScrollY;
             infoScrollView.post(new Runnable() {
@@ -226,11 +496,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // SECTION SYSTÈME INDÉPENDANTE DES MOTIONEVENT
-    // -------------------------------------------------------------------------
-
     private void appendSystemIndependentInfo(StringBuilder sb) {
+        appendRealtimeSensorsInfo(sb);
+
         appendAdbInfo(sb);
         appendBatteryAndUsbConnectionInfo(sb);
         appendUsbHostDevicesInfo(sb);
@@ -252,13 +520,39 @@ public class MainActivity extends Activity {
             appendLine(sb, "Settings.Global.ADB_ENABLED", errorText(e));
         }
 
+        try {
+            int adbEnabled = Settings.Secure.getInt(getContentResolver(), Settings.Global.ADB_ENABLED, -1);
+            appendLine(sb, "Settings.Secure.ADB_ENABLED brut", Integer.toString(adbEnabled));
+
+        }
+        catch (Exception e) {
+            appendLine(sb, "Settings.Secure.ADB_ENABLED", errorText(e));
+        }
+
+        try {
+            Class<?> systemPropertiesClass = Class.forName("android.os.SystemProperties");
+            Method getMethod = systemPropertiesClass.getMethod("get", String.class);
+            String adbdStatus = (String) getMethod.invoke(null, "init.svc.adbd");
+            boolean isAdbDaemonRunning = "running".equals(adbdStatus);
+            appendLine(sb, "SystemProperties.nit.svc.adbd is running", Boolean.toString(isAdbDaemonRunning));
+        }
+        catch (Exception e) {
+            appendLine(sb, "SystemProperties.init.svc.adbd unavailable", errorText(e));
+        }
+
+        try {
+            Class<?> systemPropertiesClass = Class.forName("android.os.SystemProperties");
+            Method getMethod = systemPropertiesClass.getMethod("get", String.class);
+            String usbConfig = (String) getMethod.invoke(null, "sys.usb.config");
+            boolean isAdbInUsbConfig = usbConfig != null && usbConfig.contains("adb");
+            appendLine(sb, "SystemProperties.sys.usb.config is running", Boolean.toString(isAdbInUsbConfig));
+        }
+        catch (Exception e) {
+            appendLine(sb, "SystemProperties.sys.usb.config unavailable", errorText(e));
+        }
+
         appendEmptyLine(sb);
 
-        /*
-         * Cette partie utilise le broadcast système USB_STATE via son nom texte.
-         * Il peut donner des indices selon les versions Android/ROM constructeur.
-         * Ce n'est pas une API publique aussi propre que BatteryManager ou UsbManager.
-         */
         try {
             Intent usbStateIntent = registerReceiver(
                     null,
@@ -302,6 +596,46 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             appendLine(sb, "Lecture USB_STATE", errorText(e));
             appendLine(sb, "ADB connecté à un PC", "non déterminable de façon fiable");
+        }
+
+        appendEmptyLine(sb);
+
+        Context context = null;
+        try {
+            Class<?> activityThreadClass = Class.forName("android.app.ActivityThread");
+            Method currentApplicationMethod = activityThreadClass.getMethod("currentApplication");
+            context = (Application) currentApplicationMethod.invoke(null);
+        } catch (Exception e) {
+            appendLine(sb, "ECHEC_CONTEXT", "Impossible de récupérer le contexte de l'application.");
+        }
+
+        if (context != null) {
+            try {
+                DisplayManager displayManager = (DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);
+                if (displayManager != null) {
+                    Display[] displays = displayManager.getDisplays();
+
+                    appendLine(sb, "Nombre d'écrans détecté: ",  Integer.toString(displays.length));
+
+                    if(displays.length > 1) {
+                        appendLine(sb, "Display info", "");
+
+                        for (Display display : displays) {
+                            Boolean isMainDisplay = display.getDisplayId() == Display.DEFAULT_DISPLAY;
+                            String name = display.getName();
+                            int flags = display.getFlags();
+                            appendLine(sb, "id", Integer.toString(display.getDisplayId()));
+                            appendLine(sb, "isMainDisplay", Boolean.toString(isMainDisplay));
+                            appendLine(sb, "Nom d'écran", name);
+                            appendLine(sb, "Flag", formatIntDecHex(flags));
+                            appendLine(sb, "Est sécurisé", Boolean.toString((flags & Display.FLAG_SECURE) == 0));
+                            appendLine(sb, "Est de type présentation", Boolean.toString((flags & Display.FLAG_PRESENTATION) != 0));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                appendLine(sb, "Impossible d'obtenir des informations sur les écran", e.toString());
+            }
         }
 
         appendEmptyLine(sb);
