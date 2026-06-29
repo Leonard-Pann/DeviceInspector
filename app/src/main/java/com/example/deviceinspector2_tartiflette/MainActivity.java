@@ -139,29 +139,29 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    private void registerSensorListeners() {
-        if (sensorManager == null) {
-            return;
-        }
+        private void registerSensorListeners() {
+            if (sensorManager == null) {
+                return;
+            }
 
-        /*
-         * SENSOR_DELAY_UI est suffisant pour afficher du texte en temps réel.
-         * Si tu veux plus réactif, tu peux essayer SENSOR_DELAY_GAME.
-         */
-        int delay = SensorManager.SENSOR_DELAY_UI;
+            /*
+             * SENSOR_DELAY_UI est suffisant pour afficher du texte en temps réel.
+             * Si tu veux plus réactif, tu peux essayer SENSOR_DELAY_GAME.
+             */
+            int delay = SensorManager.SENSOR_DELAY_UI;
 
-        if (accelerometerSensor != null) {
-            sensorManager.registerListener(this, accelerometerSensor, delay);
-        }
+            if (accelerometerSensor != null) {
+                sensorManager.registerListener(this, accelerometerSensor, delay);
+            }
 
-        if (gyroscopeSensor != null) {
-            sensorManager.registerListener(this, gyroscopeSensor, delay);
-        }
+            if (gyroscopeSensor != null) {
+                sensorManager.registerListener(this, gyroscopeSensor, delay);
+            }
 
-        if (magnetometerSensor != null) {
-            sensorManager.registerListener(this, magnetometerSensor, delay);
+            if (magnetometerSensor != null) {
+                sensorManager.registerListener(this, magnetometerSensor, delay);
+            }
         }
-    }
 
     private void unregisterSensorListeners() {
         if (sensorManager != null) {
